@@ -1,6 +1,8 @@
 import math
 import uuid
+from sqlalchemy import or_
 
+from app.models.item import ItemCategory
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.orm import Session
 
@@ -19,6 +21,7 @@ def create_item(body: ItemCreate, db: Session = Depends(get_db), current_user: U
         title=body.title,
         description=body.description,
         price=body.price,
+        category=body.category.value,
         user_id=current_user.id
     )
 
@@ -32,9 +35,30 @@ def create_item(body: ItemCreate, db: Session = Depends(get_db), current_user: U
 def get_items(
         page: int = Query(1, ge=1, description="Number of page(starts with 1)"),
         size: int = Query(10, ge=1, le = 20, description="Amount of items in page(max 20)"),
+        category: ItemCategory | None = Query(None, description="Фільтр за категорією"),
+        search: str | None = None,
+        min_price: float | None = None,
+        max_price: float | None = None,
         db: Session = Depends(get_db)
 ):
     query_items = db.query(Item).filter(Item.is_sold == False)
+
+    if category:
+        query_items = query_items.filter(Item.category == category.value)
+
+    if min_price is not None:
+        query_items = query_items.filter(Item.price >= min_price)
+
+    if max_price is not None:
+        query_items = query_items.filter(Item.price <= max_price)
+
+    if search:
+        query_items = query_items.filter(
+            or_(
+                Item.title.ilike(f"%{search}%"),
+                Item.description.ilike(f"%{search}%")
+            )
+        )
 
     total = query_items.count()
 
