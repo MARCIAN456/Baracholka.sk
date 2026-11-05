@@ -13,6 +13,13 @@ class ItemCategory(str, Enum):
     SPORT = "sport"
     OTHER = "other"
 
+class ItemWeight(str, Enum):
+    LIGHT = "under_1kg"
+    MEDIUM = "1_to_5kg"
+    HEAVY = "5_to_15kg"
+    EXTRA_HEAVY = "15_to_30kg"
+
+
 class Item(Base):
     __tablename__ = "item"
 
@@ -22,6 +29,7 @@ class Item(Base):
     price = Column(Float, nullable=False)
     is_sold = Column(Boolean, default=False)
     category = Column(String(50), default=ItemCategory.OTHER.value, nullable=False)
+    weight = Column(String(20), server_default="1_to_5kg", nullable=False)
     createdAt = Column(Date, default=date.today)
 
     user_id = Column(Uuid, ForeignKey("user.id", ondelete="CASCADE"), nullable=False)

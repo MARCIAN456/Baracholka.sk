@@ -12,7 +12,10 @@ class User(Base):
     username = Column(String(30), nullable=False)
     password = Column(String(255), nullable=False)
     email = Column(String(255), unique=True, index=True, nullable=False)
+    phone = Column(String(20), nullable=True)
     role = Column(String, server_default="USER", nullable=False)
+    city = Column(String(50), server_default="Košice", nullable=False)
+    country = Column(String(50), server_default="Slovakia", nullable=False)
     createdAt = Column(Date, default=date.today)
 
     items = relationship("Item", back_populates="owner", cascade="all, delete-orphan")

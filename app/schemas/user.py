@@ -23,6 +23,18 @@ class UserCreate(BaseModel):
         max_length=128,
         description="Minimum 8 letters"
     )
+    city: str = Field(
+        ...,
+        min_length=2,
+        max_length=50,
+        description="Місто проживання (обов'язково)"
+    )
+    country: str = Field(
+        "Slovakia",
+        min_length=2,
+        max_length=50,
+        description="Країна проживання"
+    )
 class UserLogin(BaseModel):
     email: EmailStr = Field(
         ...,
@@ -40,6 +52,8 @@ class UserResponse(BaseModel):
     id: uuid.UUID
     username: str
     email: EmailStr
+    city: str
+    country: str
 
     model_config = ConfigDict(from_attributes=True)
 

@@ -22,6 +22,7 @@ def create_item(body: ItemCreate, db: Session = Depends(get_db), current_user: U
         description=body.description,
         price=body.price,
         category=body.category.value,
+        weight=body.weight.value,
         user_id=current_user.id
     )
 
@@ -59,6 +60,37 @@ def get_items(
                 Item.description.ilike(f"%{search}%")
             )
         )
+
+    total = query_items.count()
+
+    offset = (page - 1) * size
+
+    items = query_items.offset(offset).limit(size).all()
+
+    total_pages = math.ceil(total/size) if total > 0 else 1
+
+    return ItemPaginatedResponse(
+        items = items,
+        total = total,
+        page=page,
+        size=size,
+        pages=total_pages
+    )
+@router.get("/get_my_items", response_model=ItemPaginatedResponse, status_code=status.HTTP_200_OK)
+def get_my_items(
+        page: int = Query(1, ge=1, description="Number of page(starts with 1)"),
+        size: int = Query(10, ge=1, le=20, description="Amount of items on page (max 20)"),
+        is_sold: bool | None = Query(None, description="Filter: only active (False) or sold (True)"),
+        current_user: User = Depends(get_current_user),
+        db: Session = Depends(get_db)
+):
+    query_items = db.query(Item).filter(Item.user_id == current_user.id)
+
+    if is_sold is not None:
+        query_items = query_items.filter(Item.is_sold == is_sold)
+
+    query_items = query_items.order_by(Item.createdAt.desc())
+
 
     total = query_items.count()
 

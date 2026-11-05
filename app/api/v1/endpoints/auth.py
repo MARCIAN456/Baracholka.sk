@@ -28,6 +28,8 @@ def register(body: UserCreate, db: Session = Depends(get_db)):
         username=body.name,
         password=hashed_password,
         email=body.email,
+        city=body.city,
+        country=body.country,
     )
 
     db.add(new_user)
