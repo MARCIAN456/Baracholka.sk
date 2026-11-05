@@ -3,6 +3,7 @@ import random
 import stripe
 from app.core.config import settings
 from fastapi import APIRouter, Depends, HTTPException, status, Query, Request
+from app.core.limiter import limiter
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_user, get_db
@@ -16,7 +17,8 @@ router = APIRouter()
 
 
 @router.post("/create-checkout-session/{item_id}", response_model=CheckoutSessionResponse)
-def create_checkout_session(item_id: uuid.UUID, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+@limiter.limit("10/minute")
+def create_checkout_session(request: Request, item_id: uuid.UUID, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     item = db.query(Item).filter(Item.id == item_id).first()
     if not item:
         raise HTTPException(

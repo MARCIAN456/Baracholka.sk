@@ -1,9 +1,10 @@
 import math
 import uuid
 from sqlalchemy import or_
+from app.core.limiter import limiter
 
 from app.models.item import ItemCategory
-from fastapi import APIRouter, Depends, HTTPException, status, Query
+from fastapi import APIRouter, Depends, HTTPException, status, Query, Request
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_user, get_db
@@ -15,7 +16,8 @@ from app.schemas.item import ItemCreate, ItemResponse, ItemDetailedResponse, Ite
 router = APIRouter()
 
 @router.post("/create-item", response_model=ItemResponse, status_code=status.HTTP_201_CREATED)
-def create_item(body: ItemCreate, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+@limiter.limit("10/minute")
+def create_item(request: Request,body: ItemCreate, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
 
     new_item = Item(
         title=body.title,
@@ -33,7 +35,9 @@ def create_item(body: ItemCreate, db: Session = Depends(get_db), current_user: U
     return new_item
 
 @router.get("/", response_model=ItemPaginatedResponse, status_code=status.HTTP_200_OK)
+@limiter.limit("60/minute")
 def get_items(
+        request: Request,
         page: int = Query(1, ge=1, description="Number of page(starts with 1)"),
         size: int = Query(10, ge=1, le = 20, description="Amount of items in page(max 20)"),
         category: ItemCategory | None = Query(None, description="Фільтр за категорією"),
@@ -77,7 +81,9 @@ def get_items(
         pages=total_pages
     )
 @router.get("/get_my_items", response_model=ItemPaginatedResponse, status_code=status.HTTP_200_OK)
+@limiter.limit("60/minute")
 def get_my_items(
+        request: Request,
         page: int = Query(1, ge=1, description="Number of page(starts with 1)"),
         size: int = Query(10, ge=1, le=20, description="Amount of items on page (max 20)"),
         is_sold: bool | None = Query(None, description="Filter: only active (False) or sold (True)"),
@@ -110,7 +116,8 @@ def get_my_items(
 
 
 @router.get("/get-item-by-id/{item_id}", response_model=ItemDetailedResponse, status_code=status.HTTP_200_OK)
-def get_item_by_id(item_id: uuid.UUID, db: Session = Depends(get_db)):
+@limiter.limit("60/minute")
+def get_item_by_id(request: Request, item_id: uuid.UUID, db: Session = Depends(get_db)):
     item = db.query(Item).filter(Item.id == item_id).first()
 
     if not item:
@@ -141,7 +148,8 @@ def delete_item(item_id: uuid.UUID, db: Session = Depends(get_db), current_user 
     db.commit()
 
 @router.patch("/update-item/{item_id}", response_model=ItemResponse)
-def update_item(item_id: uuid.UUID,
+def update_item(request: Request,
+                item_id: uuid.UUID,
                 body: ItemUpdate,
                 db: Session = Depends(get_db),
                 current_user: User = Depends(get_current_user)

@@ -13,11 +13,13 @@ from app.schemas.delivery import DeliveryResponse, DeliveryCreate, DeliveryStatu
 from app.models.delivery import Delivery
 from app.models.payments import Payment
 from app.models.user import User
+from app.core.limiter import limiter
 
 router = APIRouter()
 
 @router.post("/create-delivery/{item_id}", response_model=DeliveryResponse, status_code=status.HTTP_201_CREATED)
-def create_delivery(body: DeliveryCreate, item_id: uuid.UUID,  db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+@limiter.limit("10/minute")
+def create_delivery(request: Request, body: DeliveryCreate, item_id: uuid.UUID,  db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
 
     item = db.query(Item).filter(Item.id == item_id).first()
 
@@ -63,7 +65,9 @@ class UserDeliveryRole(str, Enum):
     SELLER = "seller"
 
 @router.get("/my", response_model=DeliveryPaginatedResponse, status_code=status.HTTP_200_OK)
+@limiter.limit("30/minute")
 def get_my_deliveries(
+        request: Request,
         role: UserDeliveryRole = Query(UserDeliveryRole.BUYER, description="buyer = my purchases, seller = my sales"),
         page: int = Query(1, ge=1, description="Number of page(starts with 1)"),
         size: int = Query(10, ge=1, le = 20, description="Amount of items in page(max 20)"),
@@ -92,7 +96,8 @@ def get_my_deliveries(
     )
 
 @router.get("/{delivery_id}", response_model=DeliveryResponse, status_code=status.HTTP_201_CREATED)
-def get_delivery(delivery_id: uuid.UUID, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+@limiter.limit("30/minute")
+def get_delivery(request: Request, delivery_id: uuid.UUID, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     delivery = db.query(Delivery).filter(Delivery.id == delivery_id).first()
 
     if not delivery:
