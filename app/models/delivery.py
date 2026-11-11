@@ -1,6 +1,8 @@
 import uuid
 from datetime import date
 from sqlalchemy import Column, String, Float, Uuid, Date
+from sqlalchemy.orm import relationship
+
 from app.models.base import Base
 from enum import Enum
 
@@ -22,6 +24,8 @@ class Delivery(Base):
     weight = Column(Float, nullable=False)
     value = Column(Float, nullable=False)
     item_id = Column(Uuid, nullable=False)
+
+    payment = relationship("Payment", back_populates="delivery", uselist=False)
 
     tracking_number = Column(String(100), nullable=True)
     status = Column(String(50), default=DeliveryStatus.PENDING.value, nullable=False)

@@ -4,14 +4,21 @@ from sqlalchemy import or_
 from app.core.limiter import limiter
 
 from app.models.item import ItemCategory
-from fastapi import APIRouter, Depends, HTTPException, status, Query, Request
+from fastapi import APIRouter, Depends, HTTPException, status, Query, Request, UploadFile, File
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_user, get_db
 from app.models.user import User
 from app.models.item import Item
+from app.models.image import ItemImage
+
+from app.service.cloudnare_service import upload_photo, delete_photo
 
 from app.schemas.item import ItemCreate, ItemResponse, ItemDetailedResponse, ItemPaginatedResponse, ItemUpdate
+from app.schemas.item import ItemImageResponse
+
+ALLOWED_IMAGE_TYPES = ["image/jpeg", "image/png", "image/webp"]
+MAX_IMAGE_SIZE = 5 * 1024 * 1024  # 5 MB
 
 router = APIRouter()
 
@@ -143,6 +150,8 @@ def delete_item(item_id: uuid.UUID, db: Session = Depends(get_db), current_user 
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Not enough permission"
         )
+    for img in current_item.images:
+        delete_photo(img.public_id)
 
     db.delete(current_item)
     db.commit()
@@ -176,6 +185,119 @@ def update_item(request: Request,
     db.refresh(item)
 
     return item
+
+@router.post("/{item_id}/images", response_model=list[ItemImageResponse], status_code=status.HTTP_201_CREATED)
+@limiter.limit("20/minute")
+def upload_item_image(
+        request: Request,
+        item_id: uuid.UUID,
+        db: Session = Depends(get_db),
+        current_user: User = Depends(get_current_user),
+        files: list[UploadFile] = File(...),
+):
+    item = db.query(Item).filter(Item.id == item_id).first()
+
+    if not item:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Not found item"
+        )
+    if item.user_id != current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You can only add photo to your own item"
+        )
+
+    current_count = db.query(ItemImage).filter(ItemImage.item_id == item_id).count()
+    if current_count + len(files) > 5:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Maximum 5 photos allowed. Currently have {current_count}, trying to add {len(files)}"
+        )
+
+    for file in files:
+        if file.content_type not in ALLOWED_IMAGE_TYPES:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Unsupported file format: {file.filename}. Allowed: JPEG, PNG, WEBP"
+            )
+        file.file.seek(0, 2)
+        size = file.file.tell()
+        file.file.seek(0)
+
+        if size > MAX_IMAGE_SIZE:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"File {file.filename} is too large. Max size is 5MB"
+            )
+
+        header = file.file.read(16)
+# ОБОВ'ЯЗКОВО повертаємо курсор на початок, щоб не зламати читання далі!
+        file.file.seek(0)
+        is_jpeg = header.startswith(b'\xff\xd8\xff')
+        is_png = header.startswith(b'\x89PNG\r\n\x1a\n')
+        is_webp = header.startswith(b'RIFF') and b'WEBP' in header
+        if not (is_jpeg or is_png or is_webp):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"File {file.filename} is not a valid image!"
+            )
+
+    uploaded_records = []
+
+    for file in files:
+        upload_data = upload_photo(file)
+
+        new_image = ItemImage(
+            item_id=item.id,
+            image_url=upload_data["image_url"],
+            public_id=upload_data["public_id"]
+        )
+        db.add(new_image)
+        uploaded_records.append(new_image)
+
+    db.commit()
+
+    for img in uploaded_records:
+        db.refresh(img)
+
+    return uploaded_records
+
+@router.delete("/{item_id}/images/{image_id}", status_code=status.HTTP_200_OK)
+@limiter.limit("20/minute")
+def delete_item_image(
+        request: Request,
+        item_id: uuid.UUID,
+        image_id: uuid.UUID,
+        db: Session = Depends(get_db),
+        current_user: User = Depends(get_current_user),
+):
+    item = db.query(Item).filter(Item.id == item_id).first()
+    image = db.query(ItemImage).filter(ItemImage.id == image_id,
+                                       ItemImage.item_id == item_id).first()
+
+    if not item:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Not found item"
+        )
+
+    if not image:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Not found image"
+        )
+
+    if item.user_id != current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You can only delete photo on your own item"
+        )
+    delete_photo(image.public_id)
+    db.delete(image)
+    db.commit()
+
+    return {"message": "Image deleted successfully"}
 
 
 

@@ -75,7 +75,8 @@ def create_checkout_session(request: Request, item_id: uuid.UUID, db: Session = 
         buyer_id = current_user.id,
         amount = item.price,
         stripe_session_id = session.id,
-        status = OrderStatus.PENDING.value
+        status = OrderStatus.PENDING.value,
+        delivery_id = delivery.id
     )
 
     db.add(new_payment)

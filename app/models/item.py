@@ -1,7 +1,6 @@
 import uuid
 from datetime import date
 from enum import Enum
-
 from sqlalchemy import Column, String, Float, Boolean, Text, Uuid, Date, ForeignKey
 from sqlalchemy.orm import relationship
 from app.models.base import Base
@@ -31,6 +30,8 @@ class Item(Base):
     category = Column(String(50), default=ItemCategory.OTHER.value, nullable=False)
     weight = Column(String(20), server_default="1_to_5kg", nullable=False)
     createdAt = Column(Date, default=date.today)
+
+    images = relationship("ItemImage", cascade="all, delete-orphan")
 
     user_id = Column(Uuid, ForeignKey("user.id", ondelete="CASCADE"), nullable=False)
     owner = relationship("User", back_populates="items")

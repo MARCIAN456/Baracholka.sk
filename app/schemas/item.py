@@ -14,6 +14,11 @@ class ItemCreate(BaseModel):
     category: ItemCategory = ItemCategory.OTHER
     weight: ItemWeight = Field(..., description="Вагова категорія товару (обов'язково)")
 
+class ItemImageResponse(BaseModel):
+    id: uuid.UUID
+    image_url: str
+
+    model_config = ConfigDict(from_attributes=True)
 
 class ItemResponse(BaseModel):
     id: uuid.UUID
@@ -25,6 +30,7 @@ class ItemResponse(BaseModel):
     weight: ItemWeight
     createdAt: date
     user_id: uuid.UUID
+    images: list[ItemImageResponse] = []
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -45,5 +51,7 @@ class ItemUpdate(BaseModel):
     price: float = Field(None, gt=0)
     category: ItemCategory | None = None
     weight: ItemWeight | None = None
+
+
 
 

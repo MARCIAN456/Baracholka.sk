@@ -11,6 +11,8 @@ class OrderStatus(str, Enum):
     CANCELLED = "cancelled"
     PAID = "paid"
     COMPLETED = "completed"
+    REFUNDED = "refunded"
+    DISPUTED = "disputed"
 
 class Payment(Base):
     __tablename__ = "payment"
@@ -22,6 +24,9 @@ class Payment(Base):
     stripe_session_id = Column(String(255), nullable=False)
     status = Column(String(50), default=OrderStatus.PENDING.value, nullable=False)
     createdAt = Column(Date, default=date.today)
+
+    delivery_id = Column(Uuid, ForeignKey("delivery.id", ondelete="SET NULL"), unique=True, nullable=True)
+    delivery = relationship("Delivery", back_populates="payment")
 
     item = relationship("Item")
     buyer = relationship("User")

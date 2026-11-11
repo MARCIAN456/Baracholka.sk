@@ -32,3 +32,9 @@ class DeliveryPaginatedResponse(BaseModel):
     page: int
     size: int
     pages: int
+
+class PacketaWebhookPayload(BaseModel):
+    packetId: str
+    barcode: str
+    statusCode: int
+    statusText: str | None = None

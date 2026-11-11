@@ -1,6 +1,8 @@
 import uuid
 import math
 
+import stripe
+
 from app.api.v1.endpoints.payments import payment_success
 from app.core.config import settings
 from fastapi import APIRouter, Depends, HTTPException, status, Query, Request
@@ -9,9 +11,10 @@ from enum import Enum
 
 from app.api.deps import get_current_user, get_db
 from app.models.item import Item
-from app.schemas.delivery import DeliveryResponse, DeliveryCreate, DeliveryStatus, DeliveryPaginatedResponse
+from app.schemas.delivery import DeliveryResponse, DeliveryCreate, DeliveryStatus, DeliveryPaginatedResponse, \
+    PacketaWebhookPayload
 from app.models.delivery import Delivery
-from app.models.payments import Payment
+from app.models.payments import Payment, OrderStatus
 from app.models.user import User
 from app.core.limiter import limiter
 
@@ -138,6 +141,60 @@ def update_delivery_status(delivery_id: uuid.UUID, new_status: DeliveryStatus, d
     db.refresh(delivery)
 
     return delivery
+
+@router.post("/packeta_webhook", status_code=status.HTTP_200_OK)
+def packeta_webhook(
+        payload: PacketaWebhookPayload,
+        request: Request,
+        db: Session = Depends(get_db)
+):
+    token = request.headers.get("X-Packeta-Token")
+    if token != settings.PACKETA_WEBHOOK_SECRET:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN
+        )
+    clean_barcode = payload.barcode.replace(" ", "")
+    delivery = db.query(Delivery).filter(Delivery.tracking_number == clean_barcode).first()
+
+    if not delivery:
+        return {"status": "ignored", "reason": "Delivery not found"}
+
+    if payload.statusCode == 7:
+        delivery.status = DeliveryStatus.DELIVERED.value
+        if delivery.payment:
+            delivery.payment.status = OrderStatus.COMPLETED.value
+
+    if payload.statusCode == 10:
+        delivery.status = DeliveryStatus.RETURNED.value
+        item = db.query(Item).filter(Item.id == delivery.item_id).first()
+        if item:
+            item.is_sold = False
+
+        if delivery.payment:
+            delivery.payment.status = OrderStatus.CANCELLED.value
+            try:
+                stripe.api_key = settings.STRIPE_SECRET_KEY
+                session = stripe.checkout.Session.retrieve(delivery.payment.stripe_session_id)
+                if session.payment_intent:
+                    stripe.Refund.create(payment_intent=session.payment_intent)
+            except Exception as e:
+                print(f"Помилка при поверненні Stripe: {e}")
+
+
+    db.commit()
+
+    return {"status": "ok"}
+
+
+
+
+
+
+
+
+
+
+
 
 
 

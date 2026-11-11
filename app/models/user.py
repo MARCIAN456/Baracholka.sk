@@ -17,6 +17,7 @@ class User(Base):
     city = Column(String(50), server_default="Košice", nullable=False)
     country = Column(String(50), server_default="Slovakia", nullable=False)
     createdAt = Column(Date, default=date.today)
+    iban = Column(String(50), nullable=True)
 
     items = relationship("Item", back_populates="owner", cascade="all, delete-orphan")
 
