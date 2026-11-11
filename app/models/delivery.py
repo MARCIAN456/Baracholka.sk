@@ -1,12 +1,13 @@
 import uuid
 from datetime import date
-from sqlalchemy import Column, String, Float, Uuid, Date
+from sqlalchemy import Column, String, Float, Uuid, Date, ForeignKey
 from sqlalchemy.orm import relationship
 
 from app.models.base import Base
 from enum import Enum
 
 class DeliveryStatus(str, Enum):
+    DRAFT = "draft"
     PENDING = "pending"
     IN_TRANSIT = "in_transit"
     READY_FOR_PICKUP = "ready_for_pickup"
@@ -23,9 +24,12 @@ class Delivery(Base):
     addressId = Column(String(50), nullable=False)
     weight = Column(Float, nullable=False)
     value = Column(Float, nullable=False)
-    item_id = Column(Uuid, nullable=False)
+    item_id = Column(Uuid, ForeignKey("item.id", ondelete="CASCADE"), nullable=False)
+    buyer_id = Column(Uuid, ForeignKey("user.id", ondelete="CASCADE"), nullable=False)
 
     payment = relationship("Payment", back_populates="delivery", uselist=False)
+    item = relationship("Item", back_populates="delivery")
+    buyer = relationship("User", back_populates="deliveries")
 
     tracking_number = Column(String(100), nullable=True)
     status = Column(String(50), default=DeliveryStatus.PENDING.value, nullable=False)

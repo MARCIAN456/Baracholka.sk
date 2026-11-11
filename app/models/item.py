@@ -32,6 +32,7 @@ class Item(Base):
     createdAt = Column(Date, default=date.today)
 
     images = relationship("ItemImage", cascade="all, delete-orphan")
+    delivery = relationship("Delivery", back_populates="item")
 
     user_id = Column(Uuid, ForeignKey("user.id", ondelete="CASCADE"), nullable=False)
     owner = relationship("User", back_populates="items")

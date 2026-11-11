@@ -13,7 +13,7 @@ sys.path.insert(0, dirname(dirname(abspath(__file__))))
 from app.models.base import Base
 from app.models.user import User
 from app.models.item import Item
-from app.models.payments import Payment
+from app.models.payments import Payment, Payout
 from app.models.image import ItemImage
 from app.models.delivery import Delivery
 from app.core.config import settings

@@ -43,7 +43,7 @@ def register(request: Request,body: UserCreate, db: Session = Depends(get_db)):
 
 @router.post("/login", response_model=Token, status_code=status.HTTP_200_OK)
 @limiter.limit("5/minute")
-def login(request: Request,body: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
+def login(request: Request ,body: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
     existing_user = db.query(User).filter(User.email == body.username).first()
 
     if not existing_user :

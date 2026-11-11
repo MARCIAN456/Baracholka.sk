@@ -3,7 +3,6 @@ import math
 
 import stripe
 
-from app.api.v1.endpoints.payments import payment_success
 from app.core.config import settings
 from fastapi import APIRouter, Depends, HTTPException, status, Query, Request
 from sqlalchemy.orm import Session
@@ -14,7 +13,7 @@ from app.models.item import Item
 from app.schemas.delivery import DeliveryResponse, DeliveryCreate, DeliveryStatus, DeliveryPaginatedResponse, \
     PacketaWebhookPayload
 from app.models.delivery import Delivery
-from app.models.payments import Payment, OrderStatus
+from app.models.payments import Payment, OrderStatus, Payout, PayoutStatus
 from app.models.user import User
 from app.core.limiter import limiter
 
@@ -43,7 +42,23 @@ def create_delivery(request: Request, body: DeliveryCreate, item_id: uuid.UUID, 
         )
     existing_delivery = db.query(Delivery).filter(Delivery.item_id == item_id, Delivery.email == current_user.email).first()
     if existing_delivery:
-        db.delete(existing_delivery)
+        if existing_delivery.payment and existing_delivery.payment.status in (OrderStatus.PAID.value, OrderStatus.COMPLETED.value):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Delivery is already paid"
+            )
+
+        existing_delivery.username = body.username
+        existing_delivery.email = current_user.email
+        existing_delivery.phone = body.phone
+        existing_delivery.addressId = body.addressId
+        existing_delivery.weight = body.weight
+        existing_delivery.value = item.price
+
+        db.commit()
+        db.refresh(existing_delivery)
+
+        return existing_delivery
 
 
     new_delivery = Delivery(
@@ -53,8 +68,9 @@ def create_delivery(request: Request, body: DeliveryCreate, item_id: uuid.UUID, 
         addressId=body.addressId,
         weight=body.weight,
         value=item.price,
-        status=DeliveryStatus.PENDING.value,
+        status=DeliveryStatus.DRAFT.value,
         item_id=item_id,
+        buyer_id=current_user.id
     )
 
     db.add(new_delivery)
@@ -78,9 +94,9 @@ def get_my_deliveries(
         current_user: User = Depends(get_current_user),
 ):
     if role == UserDeliveryRole.BUYER:
-        query_delivery = db.query(Delivery).filter(Delivery.email == current_user.email)
+        query_delivery = db.query(Delivery).filter(Delivery.buyer_id == current_user.id)
     else:
-        query_delivery = db.query(Delivery).join(Item, Delivery.item_id == Item.id).filter(Item.user_id == current_user.id)
+        query_delivery = db.query(Delivery).join(Delivery.item).filter(Item.user_id == current_user.id, Delivery.status != DeliveryStatus.DRAFT.value)
 
     total = query_delivery.count()
 
@@ -98,7 +114,7 @@ def get_my_deliveries(
         pages=total_pages
     )
 
-@router.get("/{delivery_id}", response_model=DeliveryResponse, status_code=status.HTTP_201_CREATED)
+@router.get("/{delivery_id}", response_model=DeliveryResponse, status_code=status.HTTP_200_OK)
 @limiter.limit("30/minute")
 def get_delivery(request: Request, delivery_id: uuid.UUID, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     delivery = db.query(Delivery).filter(Delivery.id == delivery_id).first()
@@ -109,11 +125,8 @@ def get_delivery(request: Request, delivery_id: uuid.UUID, db: Session = Depends
             detail="Delivery not found"
         )
 
-    item = db.query(Item).filter(Item.id == delivery.item_id).first()
-    seller_id = item.user_id
-
     is_buyer = (current_user.email == delivery.email)
-    is_seller = (current_user.id == seller_id)
+    is_seller = (delivery.item and current_user.id == delivery.item.user_id)
 
     if not(is_buyer or is_seller):
         raise HTTPException(
@@ -133,9 +146,8 @@ def update_delivery_status(delivery_id: uuid.UUID, new_status: DeliveryStatus, d
         )
     delivery.status = new_status.value
     if new_status == DeliveryStatus.DELIVERED:
-        payment = db.query(Payment).filter(Payment.item_id == delivery.item_id).first()
-        if payment:
-            payment.status = "completed"
+        if delivery.payment:
+            delivery.payment.status = OrderStatus.COMPLETED.value
 
     db.commit()
     db.refresh(delivery)
@@ -163,12 +175,24 @@ def packeta_webhook(
         delivery.status = DeliveryStatus.DELIVERED.value
         if delivery.payment:
             delivery.payment.status = OrderStatus.COMPLETED.value
+            if not delivery.payment.payout and delivery.item:
+                seller = delivery.item.owner
+                if seller:
+                    seller_iban = seller.iban
+
+                    new_payout = Payout(
+                        payment_id=delivery.payment.id,
+                        seller_id=delivery.item.user_id,
+                        amount=delivery.payment.amount,
+                        iban=seller_iban,
+                        status=PayoutStatus.PENDING.value,
+                    )
+                    db.add(new_payout)
 
     if payload.statusCode == 10:
         delivery.status = DeliveryStatus.RETURNED.value
-        item = db.query(Item).filter(Item.id == delivery.item_id).first()
-        if item:
-            item.is_sold = False
+        if delivery.item:
+            delivery.item.is_sold = False
 
         if delivery.payment:
             delivery.payment.status = OrderStatus.CANCELLED.value

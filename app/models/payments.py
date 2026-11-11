@@ -14,6 +14,12 @@ class OrderStatus(str, Enum):
     REFUNDED = "refunded"
     DISPUTED = "disputed"
 
+class PayoutStatus(str, Enum):
+    PENDING = "pending"
+    PAID = "paid"
+    REJECTED = "rejected"
+    FAILED = "failed"
+
 class Payment(Base):
     __tablename__ = "payment"
 
@@ -27,7 +33,22 @@ class Payment(Base):
 
     delivery_id = Column(Uuid, ForeignKey("delivery.id", ondelete="SET NULL"), unique=True, nullable=True)
     delivery = relationship("Delivery", back_populates="payment")
+    payout = relationship("Payout", back_populates="payment", uselist=False)
 
     item = relationship("Item")
     buyer = relationship("User")
-    
+
+class Payout(Base):
+    __tablename__ = "payout"
+
+    id = Column(Uuid, primary_key=True, default=uuid.uuid4)
+    payment_id = Column(Uuid, ForeignKey("payment.id", ondelete="CASCADE"), unique=True, nullable=False)
+    seller_id = Column(Uuid, ForeignKey("user.id", ondelete="CASCADE"), nullable=False)
+    amount = Column(Float, nullable=False)
+    iban = Column(String(50), nullable=True)
+    status = Column(String(50), default=PayoutStatus.PENDING.value, nullable=False)
+    paidAt = Column(Date, nullable=True)
+    stripe_transfer_id = Column(String(255), nullable=True)
+    createdAt = Column(Date, default=date.today)
+    payment = relationship("Payment", back_populates="payout")
+    seller = relationship("User")

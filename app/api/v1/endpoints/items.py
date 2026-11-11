@@ -25,7 +25,11 @@ router = APIRouter()
 @router.post("/create-item", response_model=ItemResponse, status_code=status.HTTP_201_CREATED)
 @limiter.limit("10/minute")
 def create_item(request: Request,body: ItemCreate, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
-
+    if not current_user.iban:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Please add your IBAN first"
+        )
     new_item = Item(
         title=body.title,
         description=body.description,

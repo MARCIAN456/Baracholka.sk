@@ -18,7 +18,9 @@ class User(Base):
     country = Column(String(50), server_default="Slovakia", nullable=False)
     createdAt = Column(Date, default=date.today)
     iban = Column(String(50), nullable=True)
+    stripe_account_id = Column(String(255), nullable=True)
 
     items = relationship("Item", back_populates="owner", cascade="all, delete-orphan")
+    deliveries= relationship("Delivery", back_populates="buyer")
 
 
