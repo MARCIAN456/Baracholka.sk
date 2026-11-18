@@ -1,3 +1,4 @@
+import hmac
 import uuid
 import math
 
@@ -13,11 +14,19 @@ from app.models.item import Item
 from app.schemas.delivery import DeliveryResponse, DeliveryCreate, DeliveryStatus, DeliveryPaginatedResponse, \
     PacketaWebhookPayload
 from app.models.delivery import Delivery
-from app.models.payments import Payment, OrderStatus, Payout, PayoutStatus
+from app.models.payments import OrderStatus, Payout, PayoutStatus
 from app.models.user import User
 from app.core.limiter import limiter
 
 router = APIRouter()
+
+# Parcel weight sent to Packeta = upper bound of the item's weight category (kg)
+ITEM_WEIGHT_KG = {
+    "under_1kg": 1.0,
+    "1_to_5kg": 5.0,
+    "5_to_15kg": 15.0,
+    "15_to_30kg": 30.0,
+}
 
 @router.post("/create-delivery/{item_id}", response_model=DeliveryResponse, status_code=status.HTTP_201_CREATED)
 @limiter.limit("10/minute")
@@ -40,7 +49,13 @@ def create_delivery(request: Request, body: DeliveryCreate, item_id: uuid.UUID, 
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="You cant buy your own item"
         )
-    existing_delivery = db.query(Delivery).filter(Delivery.item_id == item_id, Delivery.email == current_user.email).first()
+    existing_delivery = db.query(Delivery).filter(
+        Delivery.item_id == item_id,
+        Delivery.buyer_id == current_user.id,
+        Delivery.status != DeliveryStatus.RETURNED.value
+    ).first()
+    weight = ITEM_WEIGHT_KG.get(item.weight, 5.0)
+
     if existing_delivery:
         if existing_delivery.payment and existing_delivery.payment.status in (OrderStatus.PAID.value, OrderStatus.COMPLETED.value):
             raise HTTPException(
@@ -52,7 +67,7 @@ def create_delivery(request: Request, body: DeliveryCreate, item_id: uuid.UUID, 
         existing_delivery.email = current_user.email
         existing_delivery.phone = body.phone
         existing_delivery.addressId = body.addressId
-        existing_delivery.weight = body.weight
+        existing_delivery.weight = weight
         existing_delivery.value = item.price
 
         db.commit()
@@ -66,7 +81,7 @@ def create_delivery(request: Request, body: DeliveryCreate, item_id: uuid.UUID, 
         email = current_user.email,
         phone=body.phone,
         addressId=body.addressId,
-        weight=body.weight,
+        weight=weight,
         value=item.price,
         status=DeliveryStatus.DRAFT.value,
         item_id=item_id,
@@ -125,7 +140,7 @@ def get_delivery(request: Request, delivery_id: uuid.UUID, db: Session = Depends
             detail="Delivery not found"
         )
 
-    is_buyer = (current_user.email == delivery.email)
+    is_buyer = (current_user.id == delivery.buyer_id)
     is_seller = (delivery.item and current_user.id == delivery.item.user_id)
 
     if not(is_buyer or is_seller):
@@ -135,25 +150,6 @@ def get_delivery(request: Request, delivery_id: uuid.UUID, db: Session = Depends
         )
     return delivery
 
-@router.patch("/{delivery_id}/status", response_model=DeliveryResponse, status_code=status.HTTP_200_OK)
-def update_delivery_status(delivery_id: uuid.UUID, new_status: DeliveryStatus, db: Session = Depends(get_db)):
-    delivery = db.query(Delivery).filter(Delivery.id == delivery_id).first()
-
-    if not delivery:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Delivery not found"
-        )
-    delivery.status = new_status.value
-    if new_status == DeliveryStatus.DELIVERED:
-        if delivery.payment:
-            delivery.payment.status = OrderStatus.COMPLETED.value
-
-    db.commit()
-    db.refresh(delivery)
-
-    return delivery
-
 @router.post("/packeta_webhook", status_code=status.HTTP_200_OK)
 def packeta_webhook(
         payload: PacketaWebhookPayload,
@@ -161,7 +157,7 @@ def packeta_webhook(
         db: Session = Depends(get_db)
 ):
     token = request.headers.get("X-Packeta-Token")
-    if token != settings.PACKETA_WEBHOOK_SECRET:
+    if not hmac.compare_digest(token or "", settings.PACKETA_WEBHOOK_SECRET):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN
         )
@@ -189,25 +185,35 @@ def packeta_webhook(
                     )
                     db.add(new_payout)
 
+        db.commit()
+        return {"status": "delivered"}
+
     if payload.statusCode == 10:
-        delivery.status = DeliveryStatus.RETURNED.value
-        if delivery.item:
-            delivery.item.is_sold = False
+        if delivery.payment and delivery.payment.status == OrderStatus.REFUNDED.value:
+            return {"status": "already_refunded"}
 
         if delivery.payment:
-            delivery.payment.status = OrderStatus.CANCELLED.value
             try:
                 stripe.api_key = settings.STRIPE_SECRET_KEY
                 session = stripe.checkout.Session.retrieve(delivery.payment.stripe_session_id)
                 if session.payment_intent:
                     stripe.Refund.create(payment_intent=session.payment_intent)
-            except Exception as e:
-                print(f"Помилка при поверненні Stripe: {e}")
+
+                delivery.payment.status = OrderStatus.REFUNDED.value
+            except stripe.error.StripeError as e:
+                db.rollback()
+
+                raise HTTPException(
+                    status_code=status.HTTP_502_BAD_GATEWAY,
+                    detail=f"Stripe refund error: {str(e)}"
+                )
 
 
-    db.commit()
-
-    return {"status": "ok"}
+        delivery.status = DeliveryStatus.RETURNED.value
+        if delivery.item:
+            delivery.item.is_sold = False
+        db.commit()
+        return {"status": "returned_and_refunded"}
 
 
 

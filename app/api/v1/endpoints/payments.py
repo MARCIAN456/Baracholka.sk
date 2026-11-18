@@ -8,7 +8,7 @@ from app.core.limiter import limiter
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_user, get_db
-from app.schemas.payments import CheckoutSessionResponse, PayoutResponse, PayoutPaginatedResponse
+from app.schemas.payments import CheckoutSessionResponse, PayoutPaginatedResponse
 from app.models.user import User
 from app.models.item import Item
 from app.models.payments import Payment, OrderStatus, Payout
@@ -39,7 +39,11 @@ def create_checkout_session(request: Request, item_id: uuid.UUID, db: Session = 
             detail="You cant buy your own item"
         )
 
-    delivery = db.query(Delivery).filter(Delivery.item_id == item_id, Delivery.email == current_user.email).first()
+    delivery = db.query(Delivery).filter(
+        Delivery.item_id == item_id,
+        Delivery.buyer_id == current_user.id,
+        Delivery.status != DeliveryStatus.RETURNED.value
+    ).first()
     if not delivery:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -54,6 +58,22 @@ def create_checkout_session(request: Request, item_id: uuid.UUID, db: Session = 
 
     stripe.api_key = settings.STRIPE_SECRET_KEY
 
+    if delivery.payment and delivery.payment.status == OrderStatus.PENDING.value:
+        try:
+            old_session = stripe.checkout.Session.retrieve(delivery.payment.stripe_session_id)
+            if old_session.status == "complete":
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Payment for this item is already being processed"
+                )
+            if old_session.status == "open":
+                stripe.checkout.Session.expire(old_session.id)
+        except stripe.error.StripeError:
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail="Payment provider error, please try again"
+            )
+
     session = stripe.checkout.Session.create(
         mode="payment",
         line_items=[
@@ -64,7 +84,7 @@ def create_checkout_session(request: Request, item_id: uuid.UUID, db: Session = 
                         "name": item.title,
                         "description": item.description,
                     },
-                    "unit_amount": int(item.price * 100),
+                    "unit_amount": int(round(item.price * 100)),
                 },
                 "quantity": 1,
             }
@@ -73,11 +93,13 @@ def create_checkout_session(request: Request, item_id: uuid.UUID, db: Session = 
             "item_id": str(item.id),
             "buyer_id": str(current_user.id),
         },
-        success_url="http://localhost:8000/api/v1/payments/success?session_id={CHECKOUT_SESSION_ID}",
-        cancel_url="http://localhost:8000/api/v1/payments/cancel?session_id={CHECKOUT_SESSION_ID}",
+        success_url=f"{settings.PUBLIC_API_URL}/api/v1/payments/success?session_id={{CHECKOUT_SESSION_ID}}",
+        cancel_url=f"{settings.PUBLIC_API_URL}/api/v1/payments/cancel?session_id={{CHECKOUT_SESSION_ID}}",
     )
-    if delivery.payment and delivery.payment.status == OrderStatus.PENDING.value:
+    if delivery.payment and delivery.payment.status in (OrderStatus.PENDING.value, OrderStatus.CANCELLED.value):
         delivery.payment.stripe_session_id = session.id
+        delivery.payment.amount = item.price
+        delivery.payment.status = OrderStatus.PENDING.value
         db.commit()
     else:
         new_payment = Payment(
@@ -98,10 +120,12 @@ def create_checkout_session(request: Request, item_id: uuid.UUID, db: Session = 
         session_id=session.id
     )
 
-@router.post("/webhook")
-async def stripe_webhook(request: Request, db: Session = Depends(get_db)):
-    payload = await request.body()
+async def get_raw_body(request: Request) -> bytes:
+    return await request.body()
 
+
+@router.post("/webhook")
+def stripe_webhook(request: Request, payload: bytes = Depends(get_raw_body), db: Session = Depends(get_db)):
     sig_header = request.headers.get("stripe-signature")
 
     try:
@@ -122,6 +146,25 @@ async def stripe_webhook(request: Request, db: Session = Depends(get_db)):
         payment = db.query(Payment).filter(Payment.stripe_session_id == session_id).first()
 
         if payment:
+            if payment.item and payment.item.is_sold:
+                stripe.api_key = settings.STRIPE_SECRET_KEY
+                if session.payment_intent:
+                    try:
+                        stripe.Refund.create(
+                            payment_intent=session.payment_intent,
+                            idempotency_key=f"refund-{session.id}",
+                        )
+                    except stripe.error.StripeError as e:
+                        if getattr(e, "code", None) != "charge_already_refunded":
+                            raise HTTPException(
+                                status_code=status.HTTP_502_BAD_GATEWAY,
+                                detail="Refund failed"
+                            )
+
+                payment.status = OrderStatus.REFUNDED.value
+                db.commit()
+                return {"status": "item_already_sold_refunded"}
+
             payment.status = OrderStatus.PAID.value
             if payment.item:
                 payment.item.is_sold = True
@@ -131,7 +174,11 @@ async def stripe_webhook(request: Request, db: Session = Depends(get_db)):
                 if not payment.delivery.tracking_number:
                     payment.delivery.tracking_number = f"Z{random.randint(100000000, 999999999)}"
 
-                db.query(Delivery).filter(Delivery.item_id == payment.item_id, Delivery.id != payment.delivery_id).delete()
+                db.query(Delivery).filter(
+                    Delivery.item_id == payment.item_id,
+                    Delivery.id != payment.delivery_id,
+                    Delivery.status == DeliveryStatus.DRAFT.value
+                ).delete()
     if event.type == "checkout.session.expired":
 
         session = event.data.object
@@ -139,13 +186,8 @@ async def stripe_webhook(request: Request, db: Session = Depends(get_db)):
 
         payment = db.query(Payment).filter(Payment.stripe_session_id == session_id).first()
 
-        if payment:
+        if payment and payment.status == OrderStatus.PENDING.value:
             payment.status = OrderStatus.CANCELLED.value
-
-            item = db.query(Item).filter(Item.id == payment.item_id).first()
-
-            if item:
-                item.is_sold = False
 
 
     db.commit()

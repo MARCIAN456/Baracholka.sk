@@ -5,11 +5,8 @@ from app.models.delivery import DeliveryStatus
 
 class DeliveryCreate(BaseModel):
     username: str = Field(..., max_length=100, description="Ім'я отримувача", examples=["Markiian"])
-    email: EmailStr = Field(..., description="Email отримувача", examples=["user@example.com"])
     phone: str = Field(..., pattern=r"^\+?[0-9]{9,15}$", description="Номер телефону", examples=["+421912345678"])
     addressId: str = Field(..., max_length=50, description="ID пункту видачі Packeta", examples=["1234"])
-    weight: float = Field(..., gt=0, description="Вага в кг", examples=[1.5])
-    value: float = Field(..., gt=0, description="Страхова вартість в євро", examples=[420.0])
 
 
 class DeliveryResponse(BaseModel):
