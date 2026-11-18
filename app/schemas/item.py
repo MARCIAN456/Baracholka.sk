@@ -10,7 +10,7 @@ from app.schemas.user import UserResponse
 class ItemCreate(BaseModel):
     title: str = Field(..., min_length=1, max_length=30)
     description: str | None = Field(..., min_length=30, max_length=2000)
-    price: float = Field(..., gt=0)
+    price: float = Field(..., gt=0, le=100_000)
     category: ItemCategory = ItemCategory.OTHER
     weight: ItemWeight = Field(..., description="Вагова категорія товару (обов'язково)")
 
@@ -48,7 +48,7 @@ class ItemPaginatedResponse(BaseModel):
 class ItemUpdate(BaseModel):
     title: str | None = Field(None, min_length=1, max_length=30)
     description: str | None = Field(None, min_length=30, max_length=2000)
-    price: float = Field(None, gt=0)
+    price: float | None = Field(None, gt=0, le=100_000)
     category: ItemCategory | None = None
     weight: ItemWeight | None = None
 

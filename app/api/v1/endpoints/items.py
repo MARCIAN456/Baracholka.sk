@@ -11,6 +11,7 @@ from app.api.deps import get_current_user, get_db
 from app.models.user import User
 from app.models.item import Item
 from app.models.image import ItemImage
+from app.models.payments import Payment, OrderStatus
 
 from app.service.cloudnare_service import upload_photo, delete_photo
 
@@ -75,6 +76,8 @@ def get_items(
                 Item.description.ilike(f"%{search}%")
             )
         )
+
+    query_items = query_items.order_by(Item.createdAt.desc(), Item.id)
 
     total = query_items.count()
 
@@ -154,11 +157,29 @@ def delete_item(item_id: uuid.UUID, db: Session = Depends(get_db), current_user 
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Not enough permission"
         )
-    for img in current_item.images:
-        delete_photo(img.public_id)
+
+    has_active_payment = db.query(Payment).filter(
+        Payment.item_id == item_id,
+        Payment.status != OrderStatus.CANCELLED.value
+    ).first()
+
+    if has_active_payment:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Item has payments and cannot be deleted"
+        )
+
+    public_ids = [img.public_id for img in current_item.images]
 
     db.delete(current_item)
     db.commit()
+
+    # Delete from Cloudinary only after the DB commit; an orphaned photo is harmless
+    for public_id in public_ids:
+        try:
+            delete_photo(public_id)
+        except Exception:
+            pass
 
 @router.patch("/update-item/{item_id}", response_model=ItemResponse)
 def update_item(request: Request,
@@ -180,7 +201,13 @@ def update_item(request: Request,
             detail="You can only update your own item"
         )
 
-    updated_item = body.model_dump(exclude_unset=True)
+    if item.is_sold:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Sold item cannot be edited"
+        )
+
+    updated_item = body.model_dump(exclude_unset=True, exclude_none=True)
 
     for field, value in updated_item.items():
         setattr(item, field, value)
@@ -297,9 +324,14 @@ def delete_item_image(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="You can only delete photo on your own item"
         )
-    delete_photo(image.public_id)
+    public_id = image.public_id
     db.delete(image)
     db.commit()
+
+    try:
+        delete_photo(public_id)
+    except Exception:
+        pass
 
     return {"message": "Image deleted successfully"}
 
