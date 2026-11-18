@@ -9,14 +9,14 @@ from app.api.deps import get_db
 from app.models.user import User
 from app.schemas.token import Token
 
-from app.schemas.user import UserCreate, UserResponse, UserLogin
+from app.schemas.user import UserCreate, UserResponse
 
 router = APIRouter()
 
 
 @router.post("/register", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
 @limiter.limit("5/minute")
-def register(request: Request,body: UserCreate, db: Session = Depends(get_db)):
+def register(request: Request, body: UserCreate, db: Session = Depends(get_db)):
     existing_user = db.query(User).filter(User.email == body.email).first()
 
     if existing_user:
@@ -46,14 +46,7 @@ def register(request: Request,body: UserCreate, db: Session = Depends(get_db)):
 def login(request: Request ,body: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
     existing_user = db.query(User).filter(User.email == body.username).first()
 
-    if not existing_user :
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="You need register first"
-        )
-    verified_password = verify_password(existing_user.password, body.password)
-
-    if not verified_password:
+    if not existing_user or not verify_password(existing_user.password, body.password):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Incorrect email or password"

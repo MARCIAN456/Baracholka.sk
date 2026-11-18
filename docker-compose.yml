@@ -14,7 +14,7 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: [ "CMD-SHELL", "pg_isready -U mark -d baracholka" ]
+      test: [ "CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}" ]
       interval: 3s
       timeout: 3s
       retries: 5
@@ -33,6 +33,9 @@ services:
       - CLOUDINARY_CLOUD_NAME=${CLOUDINARY_CLOUD_NAME}
       - CLOUDINARY_API_KEY=${CLOUDINARY_API_KEY}
       - CLOUDINARY_API_SECRET=${CLOUDINARY_API_SECRET}
+      - STRIPE_WEBHOOK_SECRET=${STRIPE_WEBHOOK_SECRET}
+      - PACKETA_WEBHOOK_SECRET=${PACKETA_WEBHOOK_SECRET}
+      - PUBLIC_API_URL=${PUBLIC_API_URL:-http://localhost:8000}
     depends_on:
       db:
         condition: service_healthy

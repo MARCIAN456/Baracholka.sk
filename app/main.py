@@ -3,6 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from app.core.limiter import limiter
+from app.core.config import settings
 from fastapi.openapi.utils import get_openapi
 
 # 1. Імпортуємо головний роутер версії v1
@@ -22,7 +23,7 @@ app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 # 3. Налаштовуємо CORS (щоб фронтенд міг надсилати запити без блокувань браузера)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://localhost:5173"],  # адреси твого фронтенду (React/Next/Vite)
+    allow_origins=settings.CORS_ORIGINS,  # адреси фронтенду, задаються в .env (CORS_ORIGINS)
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
