@@ -3,7 +3,7 @@ from datetime import date
 from app.models.item import ItemCategory, ItemWeight
 
 from pydantic import BaseModel, ConfigDict, Field
-from app.schemas.user import UserResponse
+from app.schemas.user import UserPublicResponse
 
 
 
@@ -36,7 +36,7 @@ class ItemResponse(BaseModel):
 
 
 class ItemDetailedResponse(ItemResponse):
-    owner: UserResponse
+    owner: UserPublicResponse
 
 class ItemPaginatedResponse(BaseModel):
     items: list[ItemResponse]
