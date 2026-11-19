@@ -146,6 +146,8 @@ def stripe_webhook(request: Request, payload: bytes = Depends(get_raw_body), db:
         payment = db.query(Payment).filter(Payment.stripe_session_id == session_id).first()
 
         if payment:
+            if payment.status in (OrderStatus.PAID.value, OrderStatus.COMPLETED.value, OrderStatus.REFUNDED.value):
+                return {"status": "already_processed"}
             if payment.item and payment.item.is_sold:
                 stripe.api_key = settings.STRIPE_SECRET_KEY
                 if session.payment_intent:
