@@ -13,7 +13,7 @@ class UserCreate(BaseModel):
     email: EmailStr = Field(
         ...,
         max_length=255,
-        description="Електронна адресса"
+        description="Email address"
     )
     password: str = Field(
         ...,
@@ -25,19 +25,19 @@ class UserCreate(BaseModel):
         ...,
         min_length=2,
         max_length=50,
-        description="Місто проживання (обов'язково)"
+        description="City (required)"
     )
     country: str = Field(
         "Slovakia",
         min_length=2,
         max_length=50,
-        description="Країна проживання"
+        description="Country"
     )
 class UserLogin(BaseModel):
     email: EmailStr = Field(
         ...,
         max_length=255,
-        description="Електронна адресса"
+        description="Email address"
     )
     password: str = Field(
         ...,

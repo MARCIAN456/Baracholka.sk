@@ -9,6 +9,7 @@ os.environ.update({
     "CLOUDINARY_API_KEY": "fake",
     "CLOUDINARY_API_SECRET": "fake",
     "PACKETA_WEBHOOK_SECRET": "packeta-test-secret",
+    "ADMIN_SECRET_KEY": "admin-test-secret-key-that-is-long-enough",
 })
 
 from types import SimpleNamespace
@@ -24,8 +25,8 @@ from app.main import app
 from app.api.deps import get_db
 from app.core.limiter import limiter
 from app.models.base import Base
-from app.models import user, item, image, delivery, payments  # noqa: F401  реєструє таблиці
-from tests.helpers import register_and_login, create_item, create_delivery, checkout, send_stripe_event
+from app.models import user, item, image, delivery, payments  # noqa
+from tests.helpers import register_and_login, create_item, accept_item, create_delivery, checkout, send_stripe_event
 
 engine = create_engine("sqlite://", connect_args={"check_same_thread": False}, poolclass=StaticPool)
 TestingSession = sessionmaker(bind=engine, autoflush=False, autocommit=False)
@@ -50,6 +51,12 @@ def client(db):
 
 
 @pytest.fixture
+def admin_client(db):
+    from app.admin.main import create_admin_app
+    return TestClient(create_admin_app(TestingSession))
+
+
+@pytest.fixture
 def buyer_headers(client):
     return register_and_login(client, "buyer@example.com")
 
@@ -67,8 +74,10 @@ def seller_headers(client):
 
 
 @pytest.fixture
-def item(client, seller_headers):
-    return create_item(client, seller_headers)
+def item(client, db, seller_headers):
+    created = create_item(client, seller_headers)
+    accept_item(db, created["id"])
+    return created
 
 
 @pytest.fixture
@@ -78,7 +87,6 @@ def draft_delivery(client, buyer_headers, item):
 
 @pytest.fixture
 def fake_stripe(monkeypatch):
-    """Фейковий Stripe: нічого не шле в інтернет, записує всі виклики."""
     state = SimpleNamespace(created=[], expired=[], refunds=[], retrieve_status="open", refund_error=None)
 
     def create(**kwargs):
@@ -106,7 +114,6 @@ def fake_stripe(monkeypatch):
 
 @pytest.fixture
 def paid_order(client, monkeypatch, fake_stripe, buyer_headers, item, draft_delivery):
-    """Повний сценарій: покупець оплатив товар, Stripe підтвердив."""
     session_id = checkout(client, buyer_headers, item["id"]).json()["session_id"]
     send_stripe_event(client, monkeypatch, "checkout.session.completed", session_id)
     delivery = client.get(f"/api/v1/delivery/{draft_delivery['id']}", headers=buyer_headers).json()

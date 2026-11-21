@@ -18,6 +18,11 @@ class ItemWeight(str, Enum):
     HEAVY = "5_to_15kg"
     EXTRA_HEAVY = "15_to_30kg"
 
+class ItemStatus(str, Enum):
+    PENDING = "pending"
+    ACCEPTED = "accepted"
+    REJECTED = "rejected"
+
 
 class Item(Base):
     __tablename__ = "item"
@@ -30,6 +35,7 @@ class Item(Base):
     category = Column(String(50), default=ItemCategory.OTHER.value, nullable=False)
     weight = Column(String(20), server_default="1_to_5kg", nullable=False)
     createdAt = Column(Date, default=date.today)
+    status = Column(String(50), default=ItemStatus.PENDING.value, nullable=False)
 
     images = relationship("ItemImage", cascade="all, delete-orphan")
     delivery = relationship("Delivery", back_populates="item", cascade="all, delete-orphan")

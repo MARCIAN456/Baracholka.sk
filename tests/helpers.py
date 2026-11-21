@@ -1,3 +1,4 @@
+import uuid
 from types import SimpleNamespace
 
 import stripe
@@ -28,6 +29,12 @@ def create_item(client, headers, **overrides):
     return response.json()
 
 
+def accept_item(db, item_id):
+    from app.models.item import Item, ItemStatus
+    db.get(Item, uuid.UUID(item_id)).status = ItemStatus.ACCEPTED.value
+    db.commit()
+
+
 def create_delivery(client, headers, item_id):
     response = client.post(f"/api/v1/delivery/create-delivery/{item_id}", headers=headers, json=DELIVERY_BODY)
     assert response.status_code == 201, response.text
@@ -39,7 +46,6 @@ def checkout(client, headers, item_id):
 
 
 def send_stripe_event(client, monkeypatch, event_type, session_id, payment_intent="pi_test"):
-    """Підміняє перевірку підпису Stripe і шле подію на наш webhook."""
     event = SimpleNamespace(
         type=event_type,
         data=SimpleNamespace(object=SimpleNamespace(id=session_id, payment_intent=payment_intent)),

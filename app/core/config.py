@@ -15,6 +15,8 @@ class Settings(BaseSettings):
     PACKETA_WEBHOOK_SECRET: str
     PUBLIC_API_URL: str = "http://localhost:8000"
     CORS_ORIGINS: list[str] = ["http://localhost:3000", "http://localhost:5173"]
+    ADMIN_SECRET_KEY: str | None = None
+    ADMIN_HTTPS_ONLY: bool = False
 
     model_config = SettingsConfigDict(
         env_file=".env", env_file_encoding="utf-8", extra="ignore"

@@ -202,7 +202,7 @@ def stripe_webhook(request: Request, payload: bytes = Depends(get_raw_body), db:
 def payment_success(session_id: str = None):
     return {
         "status": "success",
-        "message": "Оплата успішна! Кошти заморожено на платформі. Очікуйте відправку через Packeta.",
+        "message": "Payment successful! Funds are held by the platform until the item is delivered via Packeta.",
         "session_id": session_id
     }
 
@@ -211,7 +211,7 @@ def payment_success(session_id: str = None):
 def payment_cancel(session_id: str = None):
     return {
         "status": "cancelled",
-        "message": "Оплату скасовано.",
+        "message": "Payment cancelled.",
         "session_id": session_id
     }
 

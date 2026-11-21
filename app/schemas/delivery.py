@@ -4,9 +4,9 @@ from pydantic import BaseModel, ConfigDict, Field, EmailStr
 from app.models.delivery import DeliveryStatus
 
 class DeliveryCreate(BaseModel):
-    username: str = Field(..., max_length=100, description="Ім'я отримувача", examples=["Markiian"])
-    phone: str = Field(..., pattern=r"^\+?[0-9]{9,15}$", description="Номер телефону", examples=["+421912345678"])
-    addressId: str = Field(..., max_length=50, description="ID пункту видачі Packeta", examples=["1234"])
+    username: str = Field(..., max_length=100, description="Recipient name", examples=["Markiian"])
+    phone: str = Field(..., pattern=r"^\+?[0-9]{9,15}$", description="Phone number", examples=["+421912345678"])
+    addressId: str = Field(..., max_length=50, description="Packeta pickup point ID", examples=["1234"])
 
 
 class DeliveryResponse(BaseModel):

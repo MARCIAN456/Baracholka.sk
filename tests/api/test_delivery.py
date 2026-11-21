@@ -3,7 +3,7 @@ from tests.helpers import DELIVERY_BODY
 
 def test_create_delivery_is_draft_with_item_weight(client, draft_delivery):
     assert draft_delivery["status"] == "draft"
-    assert draft_delivery["weight"] == 1.0     # under_1kg -> 1.0, клієнт вагу не передає
+    assert draft_delivery["weight"] == 1.0
     assert draft_delivery["value"] == 400
 
 

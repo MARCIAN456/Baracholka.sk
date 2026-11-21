@@ -3,7 +3,7 @@ import uuid
 from sqlalchemy import or_
 from app.core.limiter import limiter
 
-from app.models.item import ItemCategory
+from app.models.item import ItemCategory, ItemStatus
 from fastapi import APIRouter, Depends, HTTPException, status, Query, Request, UploadFile, File
 from sqlalchemy.orm import Session
 
@@ -19,7 +19,7 @@ from app.schemas.item import ItemCreate, ItemResponse, ItemDetailedResponse, Ite
 from app.schemas.item import ItemImageResponse
 
 ALLOWED_IMAGE_TYPES = ["image/jpeg", "image/png", "image/webp"]
-MAX_IMAGE_SIZE = 5 * 1024 * 1024  # 5 MB
+MAX_IMAGE_SIZE = 5 * 1024 * 1024
 
 router = APIRouter()
 
@@ -52,13 +52,13 @@ def get_items(
         request: Request,
         page: int = Query(1, ge=1, description="Number of page(starts with 1)"),
         size: int = Query(10, ge=1, le = 20, description="Amount of items in page(max 20)"),
-        category: ItemCategory | None = Query(None, description="Фільтр за категорією"),
+        category: ItemCategory | None = Query(None, description="Filter by category"),
         search: str | None = None,
         min_price: float | None = None,
         max_price: float | None = None,
         db: Session = Depends(get_db)
 ):
-    query_items = db.query(Item).filter(Item.is_sold == False)
+    query_items = db.query(Item).filter(Item.is_sold == False, Item.status == ItemStatus.ACCEPTED.value)
 
     if category:
         query_items = query_items.filter(Item.category == category.value)
@@ -174,7 +174,6 @@ def delete_item(item_id: uuid.UUID, db: Session = Depends(get_db), current_user 
     db.delete(current_item)
     db.commit()
 
-    # Delete from Cloudinary only after the DB commit; an orphaned photo is harmless
     for public_id in public_ids:
         try:
             delete_photo(public_id)
@@ -263,7 +262,6 @@ def upload_item_image(
             )
 
         header = file.file.read(16)
-# ОБОВ'ЯЗКОВО повертаємо курсор на початок, щоб не зламати читання далі!
         file.file.seek(0)
         is_jpeg = header.startswith(b'\xff\xd8\xff')
         is_png = header.startswith(b'\x89PNG\r\n\x1a\n')

@@ -14,3 +14,6 @@ email-validator>=2.1.0
 stripe>=8.0.0
 slowapi>=0.1.9
 cloudinary>=1.39.0
+sqladmin>=0.20.0
+itsdangerous>=2.1.0
+greenlet>=3.0.0

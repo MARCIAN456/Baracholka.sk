@@ -41,5 +41,30 @@ services:
         condition: service_healthy
     volumes:
       - .:/app
+  admin:
+    build: .
+    container_name: baracholka_admin
+    restart: always
+    command: uvicorn app.admin.main:app --host 0.0.0.0 --port 8001
+    ports:
+      - "127.0.0.1:8001:8001"
+    environment:
+      - DATABASE_URL=postgresql+psycopg2://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+      - SECRET_KEY=${SECRET_KEY}
+      - STRIPE_SECRET_KEY=${STRIPE_SECRET_KEY}
+      - CLOUDINARY_CLOUD_NAME=${CLOUDINARY_CLOUD_NAME}
+      - CLOUDINARY_API_KEY=${CLOUDINARY_API_KEY}
+      - CLOUDINARY_API_SECRET=${CLOUDINARY_API_SECRET}
+      - STRIPE_WEBHOOK_SECRET=${STRIPE_WEBHOOK_SECRET}
+      - PACKETA_WEBHOOK_SECRET=${PACKETA_WEBHOOK_SECRET}
+      - ADMIN_SECRET_KEY=${ADMIN_SECRET_KEY}
+      - ADMIN_HTTPS_ONLY=${ADMIN_HTTPS_ONLY:-false}
+    depends_on:
+      db:
+        condition: service_healthy
+      api:
+        condition: service_started
+    volumes:
+      - .:/app
 volumes:
   postgres_data:

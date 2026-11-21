@@ -5,7 +5,6 @@ from app.models.payments import Payment
 from tests.helpers import checkout, create_delivery, send_stripe_event
 
 
-# ---------- checkout ----------
 def test_checkout_without_delivery_returns_400(client, fake_stripe, buyer_headers, item):
     response = checkout(client, buyer_headers, item["id"])
 
@@ -42,7 +41,7 @@ def test_second_checkout_expires_old_session_and_reuses_payment(client, db, fake
 
 def test_checkout_blocked_when_previous_session_already_paid(client, fake_stripe, buyer_headers, item, draft_delivery):
     checkout(client, buyer_headers, item["id"])
-    fake_stripe.retrieve_status = "complete"   # оплачено, але webhook ще не дійшов
+    fake_stripe.retrieve_status = "complete"
 
     response = checkout(client, buyer_headers, item["id"])
 
@@ -50,7 +49,6 @@ def test_checkout_blocked_when_previous_session_already_paid(client, fake_stripe
     assert len(fake_stripe.created) == 1
 
 
-# ---------- webhook ----------
 def test_webhook_rejects_invalid_signature(client):
     response = client.post("/api/v1/payments/webhook", content=b"{}", headers={"stripe-signature": "t=1,v1=fake"})
 
@@ -76,7 +74,7 @@ def test_completed_deletes_other_buyers_drafts(client, monkeypatch, fake_stripe,
     assert client.get("/api/v1/delivery/my", headers=buyer_headers).json()["total"] == 1
 
 
-def test_duplicate_completed_event_does_not_refund(client, db, monkeypatch, fake_stripe, paid_order):   # БАГ №1: зараз червоний
+def test_duplicate_completed_event_does_not_refund(client, db, monkeypatch, fake_stripe, paid_order):
     send_stripe_event(client, monkeypatch, "checkout.session.completed", paid_order.session_id)
 
     assert fake_stripe.refunds == []
@@ -84,7 +82,6 @@ def test_duplicate_completed_event_does_not_refund(client, db, monkeypatch, fake
 
 
 def _two_buyers_race(client, monkeypatch, buyer_headers, other_buyer_headers, item):
-    """Обидва відкрили checkout. Першим оплатив buyer, другий оплатив пізніше."""
     create_delivery(client, buyer_headers, item["id"])
     create_delivery(client, other_buyer_headers, item["id"])
     first = checkout(client, buyer_headers, item["id"]).json()["session_id"]
@@ -118,7 +115,7 @@ def test_refund_failure_returns_502_and_keeps_pending(client, db, monkeypatch, f
 
     response = send_stripe_event(client, monkeypatch, "checkout.session.completed", second)
 
-    assert response.status_code == 502    # Stripe повторить webhook пізніше
+    assert response.status_code == 502
     assert db.query(Payment).filter_by(stripe_session_id=second).one().status == "pending"
 
 

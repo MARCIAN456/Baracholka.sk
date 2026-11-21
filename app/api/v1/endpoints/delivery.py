@@ -20,7 +20,6 @@ from app.core.limiter import limiter
 
 router = APIRouter()
 
-# Parcel weight sent to Packeta = upper bound of the item's weight category (kg)
 ITEM_WEIGHT_KG = {
     "under_1kg": 1.0,
     "1_to_5kg": 5.0,
